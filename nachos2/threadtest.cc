@@ -12,6 +12,8 @@
 #include "copyright.h"
 #include "system.h"
 #include "dllist.h"
+#include "Table.h"
+#include <ctime>
 // testnum is set in main.cc
 int testnum = 1;
 // threadNum is set in main.cc
@@ -82,6 +84,38 @@ Test3(int which)
 }
 
 
+// Table test
+void
+tableTest(int which)
+{
+    int size = threadNum * itemNum;
+    int indexs[size];
+    Table *table(size);
+
+    // 插入
+    srand(static_cast<unsigned>(time(0));
+    for (int i = 0; i < size; ++i)
+    {
+        void *object = (void*)(rand() % max_key);
+        indexs[i] = table->Alloc(object);
+        printf("*** Object:%d stored at index[%d] in thread %d\n", (int)*object, indexs[i], which);
+        currentThread->Yield();
+    }
+    // 获取
+    for (int i = 0; i < size; ++i)
+    {
+        printf("*** Get object:%d stored at index[%d] in thread %d\n", (int)table->Get(indexs[i]), indexs[i], which);
+        currentThread->Yield();
+    }
+    // 释放
+    for (int i = 0; i < size; ++i)
+    {
+        table->Release(indexs[i]);
+        printf("*** Release object stored at index[%d] in thread %d\n", indexs[i], which);
+        currentThread->Yield();
+    }
+}
+
 //----------------------------------------------------------------------
 // ThreadTest1
 // 	Set up a ping-pong between two threads, by forking a thread
@@ -127,6 +161,8 @@ ThreadTest()
             Test(Test2); break;
         case 5:
             Test(Test3); break;
+        case 6:
+            Test(tableTest); break;
         default:
             printf("No test specified.\n");
             break;
