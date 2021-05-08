@@ -26,24 +26,39 @@ files, etc.
 
 */
 
-
-class Table {
-   public:
-     // create a table to hold at most 'size' entries.
-     Table(size);
-   
-     // allocate a table slot for 'object'.
-     // return the table index for the slot or -1 on error.
-     int Alloc(void *object);
-   
-     // return the object from table index 'index' or NULL on error.
-     // (assert index is in range).  Leave the table entry allocated
-     // and the pointer in place.
-     void *Get(int index);
-   
-     // free a table slot
-     void Release(int index);
-   private:
-     // Your code here.
+//#include "synch.h"
+#ifndef _TABLE_H_
+#define _TABLE_H_
+class Lock
+{
+public:
+  Lock(const char *);
+  void Acquire();
+  void Release();
 };
+class Table
+{
+public:
+  // create a table to hold at most 'size' entries.
+  Table(int size);
+  ~Table();
+  // allocate a table slot for 'object'.
+  // return the table index for the slot or -1 on error.
+  int Alloc(void *object);
 
+  // return the object from table index 'index' or NULL on error.
+  // (assert index is in range).  Leave the table entry allocated
+  // and the pointer in place.
+  void *Get(int index);
+
+  // free a table slot
+  void Release(int index);
+
+private:
+  // Your code here.
+  void** table;
+  int size; // Table大小
+  Lock* lock; // 互斥锁
+  int remain; // 剩余可分配的entries数
+};
+#endif
