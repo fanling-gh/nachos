@@ -13,6 +13,9 @@ class Condition
 {
 public:
   Condition();
+  void Wait(Lock *lock);
+  void Signal(Lock *lock);
+
 };
 class Semaphore
 {
