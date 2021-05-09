@@ -12,8 +12,8 @@
 #include "copyright.h"
 #include "system.h"
 #include "dllist.h"
+#include "synch.h"
 #include "Table.h"
-#include <ctime>
 // testnum is set in main.cc
 int testnum = 1;
 // threadNum is set in main.cc
@@ -22,9 +22,14 @@ int threadNum = 2;
 int itemNum = 2;
 
 DLList *dList = new DLList();
+static int currentItemNum = 0;
 extern void Driver_test();
 extern void Generate_nItems(const int &N, DLList *list);
 extern void Remove_nItems(const int &N, DLList *list);
+Lock *threadLock = new Lock("lock used to mutex different threads");
+Lock *dllistLock = new Lock("lock for dllist operations");
+Condition *cIsEmpty = new Condition("condition: is dllist empty?");
+
 //----------------------------------------------------------------------
 // SimpleThread
 // 	Loop 5 times, yielding the CPU to another ready thread
@@ -46,15 +51,28 @@ SimpleThread(int which)
     }
 }
 
-// Share
+// 这里实现了使用semaphore的锁与条件变量形成的互斥，其他函数尚未实现
 void
 Test1(int which)
 {
+    threadLock->Acquire();
+    while (currentItemNum != 0) {
+        cIsEmpty->Wait(threadLock);
+    }
+
     printf("*** Inserting items in thread %d\n", which);
     Generate_nItems(itemNum, dList);
+    currentItemNum += itemNum;
+
     currentThread->Yield(); // Yield here
+
     printf("*** Removing items in thread %d\n", which);
     Remove_nItems(itemNum, dList);
+    currentItemNum -= itemNum;
+    if (currentItemNum == 0)
+        cIsEmpty->Signal(threadLock);
+
+    threadLock->Release();
 }
 
 //
@@ -88,32 +106,33 @@ Test3(int which)
 void
 tableTest(int which)
 {
-    int size = threadNum * itemNum;
-    int indexs[size];
-    Table *table(size);
+     int size = threadNum * itemNum;
+     int indexs[size];
+     Table *table = new Table(size);
 
-    // 插入
-    srand(static_cast<unsigned>(time(0));
-    for (int i = 0; i < size; ++i)
-    {
-        void *object = (void*)(rand() % max_key);
-        indexs[i] = table->Alloc(object);
-        printf("*** Object:%d stored at index[%d] in thread %d\n", (int)*object, indexs[i], which);
-        currentThread->Yield();
-    }
-    // 获取
-    for (int i = 0; i < size; ++i)
-    {
-        printf("*** Get object:%d stored at index[%d] in thread %d\n", (int)table->Get(indexs[i]), indexs[i], which);
-        currentThread->Yield();
-    }
-    // 释放
-    for (int i = 0; i < size; ++i)
-    {
-        table->Release(indexs[i]);
-        printf("*** Release object stored at index[%d] in thread %d\n", indexs[i], which);
-        currentThread->Yield();
-    }
+     // 插入
+     //srand(static_cast<unsigned>(time(0)));
+	 for (int i = 0; i < size; ++i)
+     {
+         void *object = (void*)(Random() % max_key);
+		 int *obj = (int*)object;
+         indexs[i] = table->Alloc(object);
+         printf("*** Object:%d stored at index[%d] in thread %d\n", *obj, indexs[i], which);
+         currentThread->Yield();
+     }
+     // 获取
+     for (int i = 0; i < size; ++i)
+     {
+         printf("*** Get object:%d stored at index[%d] in thread %d\n", (int)table->Get(indexs[i]), indexs[i], which);
+         currentThread->Yield();
+     }
+     // 释放
+     for (int i = 0; i < size; ++i)
+     {
+         table->Release(indexs[i]);
+	     printf("*** Release object stored at index[%d] in thread %d\n", indexs[i], which);
+         currentThread->Yield();
+     }
 }
 
 //----------------------------------------------------------------------
