@@ -100,7 +100,7 @@
     { 
         // 在调用此函数之前必然要先conditionLock->Acquire()获取锁
         // 进入管程（拥有锁的控制）
-        assert(conditionLock->isHeldByCurrentThread()); // 使用断言强制要求当前进程是控制着该锁的
+        assert(conditionLock->isHeldByCurrentThread()); // 使用断言强制要求当前线程是控制着该锁的
         conditionLock->Release(); // 释放锁，允许其他线程进入管程
         numWaiting++; 
         sem->P(); // 线程被阻塞在这里
@@ -165,7 +165,15 @@
     }
     ```
 
-    如此一来，对链表的所有插入/删除操作都成为原子性的，不会再被其他线程打断。相当于我们的模拟线程切换行为`currentThread->Yield()`均无效化，因为其他线程得不到锁，都会被阻塞。
+    其他函数同理。
+
+    如此一来，对链表的所有插入/删除操作都成为原子性的，不会再被其他线程打断。相当于我们的模拟线程切换行为  
+
+    ``` C
+    currentThread->Yield();  
+    ```
+
+    均无效化，因为其他线程得不到锁，都会被阻塞。
 
 2. 对`threadtest.cc`的修改：维护一个用于线程之间的锁，和一个指示链表是否为空的条件变量
 
