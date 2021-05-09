@@ -61,6 +61,81 @@
 
 ---
 
-使用信号量实现条件变量较为棘手。
+实现条件变量需要配合使用锁，锁的作用为实现互斥，条件变量的所有操作(`Wait`, `Signal`, `Broadcast`)都需要一个锁，同一个条件变量使用同一个锁。
 
-## 修改DLList使它为线程安全的
+1. 对`synch.h`的修改
+
+    ``` C
+    class Condition {
+    public:
+        ...
+
+    private:
+    char *name;
+    int numWaiting; // 在当前条件变量的等待队列中阻塞的线程数
+    Semaphore *sem; // 用于阻塞线程的信号量
+    };
+    ```
+
+2. 对`synch.cc`的修改
+
+    ``` C
+    // 构造函数
+    Condition::Condition(char* debugName)
+    { 
+        name = debugName;
+        sem = new Semaphore(debugName , 0); // 用于阻塞线程的信号量，初始化为0使调用Wait时必然阻塞
+        currentThread = NULL; 
+        numWaiting = 0; // 在阻塞队列中等待的线程数，使用这个变量能够使调用Signal的效果不积累
+    }
+
+    // 析构函数
+    Condition::~Condition()
+    {
+        delete sem;
+    }
+
+    // Wait函数
+    void Condition::Wait(Lock* conditionLock)
+    { 
+        // 在调用此函数之前必然要先conditionLock->Acquire()获取锁
+        // 进入管程（拥有锁的控制）
+        assert(conditionLock->isHeldByCurrentThread()); // 使用断言强制要求当前进程是控制着该锁的
+        conditionLock->Release(); // 释放锁，允许其他线程进入管程
+        numWaiting++; 
+        sem->P(); // 线程被阻塞在这里
+
+        // 解除阻塞（被唤醒）之后
+        numWaiting--;
+        conditionLock->Acquire(); // 重新获取管程的锁，禁止其他线程进入管程
+
+        // 进入临界区（调用该函数之后）
+    }
+
+    // Signal函数
+    void Condition::Signal(Lock* conditionLock)
+    {
+        assert(conditionLock->isHeldByCurrentThread());
+        // 如果队列中没有线程，则什么也不做（与信号量V()的主要区别）
+        if(numWaiting > 0){
+            sem->V();
+            numWaiting--; 
+        }
+        // Mesa语义：这个线程还会继续在管程中运行直到释放锁，随后被阻塞的线程才会获得锁与资源
+    }
+
+    // 广播函数：唤醒所有在此条件上阻塞的进程
+    void Condition::Broadcast(Lock* conditionLock)
+    {
+        assert(conditionLock->isHeldByCurrentThread());
+        for(int i = 0; i < numWaiting; i++){
+            sem->V();
+        }
+    }
+    ```
+
+## 修改`DLList.cc`与`threadtest.cc`，做到线程安全
+
+---
+
+
