@@ -77,8 +77,6 @@ void *DLList::Remove(int *keyPtr)
 {
     dllistLock->Acquire();
     if (!IsEmpty()) {
-        cIsEmpty->Signal(dllistLock);
-        dllistLock->Release();
         return NULL;
     }
     void *res;
@@ -166,7 +164,6 @@ void *DLList::SortedRemove(int sortKey)
 {
     dllistLock->Acquire();
     if (!IsEmpty()) {
-        cIsEmpty->Signal(dllistLock);
         return NULL;
     }
 

@@ -71,9 +71,9 @@
         ...
 
     private:
-    char *name;
-    int numWaiting; // 在当前条件变量的等待队列中阻塞的线程数
-    Semaphore *sem; // 用于阻塞线程的信号量
+        char *name;
+        int numWaiting; // 在当前条件变量的等待队列中阻塞的线程数
+        Semaphore *sem; // 用于阻塞线程的信号量
     };
     ```
 
@@ -138,4 +138,67 @@
 
 ---
 
+1. 对`DLList.cc`进行的修改：维护一个链表专用的锁`dllistLock`，对于所有需要修改链表数据（增加或减少）的操作，都使用
 
+    ``` C
+    dllistLock->Acquire();
+    dllistLock->Release();
+    ```
+
+    将整个操作“包裹”起来，示例如下：
+
+    ``` C
+    void *DLList::Remove(int *keyPtr)
+    {
+        dllistLock->Acquire();
+        if (!IsEmpty()) {
+            cIsEmpty->Signal(dllistLock);
+            dllistLock->Release();
+            return NULL;
+        }
+
+        ......
+        
+        dllistLock->Release();
+        return res;
+        // 注意在所有return之前都要释放锁。
+    }
+    ```
+
+    如此一来，对链表的所有插入/删除操作都成为原子性的，不会再被其他线程打断。相当于我们的模拟线程切换行为`currentThread->Yield()`均无效化，因为其他线程得不到锁，都会被阻塞。
+
+2. 对`threadtest.cc`的修改：维护一个用于线程之间的锁，和一个指示链表是否为空的条件变量
+
+    ``` C
+        Lock *threadLock = new Lock("lock used to mutex different threads");
+        Condition *cIsEmpty = new Condition("condition: is dllist empty?");
+    ```
+
+    在我们的测试函数`Test1`中，由于所有线程共享同一个双向链表，所以各线程之间的切换会导致各个线程最后删除的item有可能并不是自己当初添加进去的item，而是别的线程添加的item。使用锁和条件变量可以解决这个问题：
+
+    ``` C
+    void
+    Test1(int which)
+    {
+        threadLock->Acquire(); // 获取锁，形成各线程之间的互斥
+        while (currentItemNum != 0) {
+            cIsEmpty->Wait(threadLock); // 等待链表清空
+        }
+
+        printf("*** Inserting items in thread %d\n", which);
+        Generate_nItems(itemNum, dList);
+        currentItemNum += itemNum;
+
+        currentThread->Yield(); // Yield here
+
+        printf("*** Removing items in thread %d\n", which);
+        Remove_nItems(itemNum, dList);
+        currentItemNum -= itemNum;
+        if (currentItemNum == 0)
+            cIsEmpty->Signal(threadLock); // 链表清空后则发出信号，唤醒被阻塞的线程
+
+        threadLock->Release();
+    }
+    ```
+
+    这里我们使用锁实现互斥，并使用条件变量强制要求各线程在链表为空时才进行下一步操作：如果链表不为空就允许线程去添加删除的话，就必然会出现前面提到的问题。
