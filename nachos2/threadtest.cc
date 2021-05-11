@@ -29,7 +29,8 @@ extern void Remove_nItems(const int &N, DLList *list);
 Lock *threadLock = new Lock("lock used to mutex different threads");
 Lock *dllistLock = new Lock("lock for dllist operations");
 Condition *cIsEmpty = new Condition("condition: is dllist empty?");
-
+// 通过gdb debug得出：table应设为全局变量，否则会使currentThread丢失，原因尚未得知
+Table *table = new Table(threadNum * itemNum);
 //----------------------------------------------------------------------
 // SimpleThread
 // 	Loop 5 times, yielding the CPU to another ready thread
@@ -103,28 +104,25 @@ void Test3(int which)
 // Table test
 void tableTest(int which)
 {
-    int size = threadNum * itemNum;
-    int indexs[size];
-    Table *table = new Table(size);
+    int indexs[threadNum];
 
     // 插入
     //srand(static_cast<unsigned>(time(0)));
-    for (int i = 0; i < size; ++i)
+    for (int i = 0; i < threadNum; ++i)
     {
         void *object = (void *)(Random() % max_key);
-        int *obj = (int *)object;
         indexs[i] = table->Alloc(object);
-        printf("*** Object:%d stored at index[%d] in thread %d\n", *obj, indexs[i], which);
+        printf("*** Object:%d stored at index[%d] in thread %d\n", *(int*)(object), indexs[i], which);
         currentThread->Yield();
     }
     // 获取
-    for (int i = 0; i < size; ++i)
+    for (int i = 0; i < threadNum; ++i)
     {
         printf("*** Get object:%d stored at index[%d] in thread %d\n", (int)table->Get(indexs[i]), indexs[i], which);
         currentThread->Yield();
     }
     // 释放
-    for (int i = 0; i < size; ++i)
+    for (int i = 0; i < threadNum; ++i)
     {
         table->Release(indexs[i]);
         printf("*** Release object stored at index[%d] in thread %d\n", indexs[i], which);
