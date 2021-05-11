@@ -437,6 +437,10 @@ void Condition::Broadcast(Lock* conditionLock)
    }
    ```
 
+3. 对线程安全的表进行测试
+
+   ![](./pic/tableTest.png)
+
 ## 2.2实现一个大小受限的缓冲区
 
 1. `BoundedBuffer.h`
