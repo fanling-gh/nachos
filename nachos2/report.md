@@ -439,6 +439,39 @@ void Condition::Broadcast(Lock* conditionLock)
 
 3. 对线程安全的表进行测试
 
+   在`threadtest.cc`文件中添加`tableTest(int which)`函数，进行测试
+   
+   ```cpp
+   // Table test
+   void tableTest(int which)
+   {
+       int indexs[threadNum];
+   
+       // 插入
+       //srand(static_cast<unsigned>(time(0)));
+       for (int i = 0; i < threadNum; ++i)
+       {
+           void *object = new int((Random() % max_key));
+           indexs[i] = table->Alloc(object);
+           printf("*** Object:%d stored at index[%d] in thread %d\n", *(int*)(object), indexs[i], which);
+           currentThread->Yield();
+       }
+       // 获取
+       for (int i = 0; i < threadNum; ++i)
+       {
+           printf("*** Get object:%d stored at index[%d] in thread %d\n", (int)table->Get(indexs[i]), indexs[i], which);
+           currentThread->Yield();
+       }
+       // 释放
+       for (int i = 0; i < threadNum; ++i)
+       {
+           table->Release(indexs[i]);
+           printf("*** Release object stored at index[%d] in thread %d\n", indexs[i], which);
+           currentThread->Yield();
+       }
+   }
+   ```
+   
    ![](./pic/tableTest.png)
 
 ## 2.2实现一个大小受限的缓冲区
@@ -471,8 +504,8 @@ void Condition::Broadcast(Lock* conditionLock)
        this->maxsize = maxsize;
        buffer = new int[maxsize];
        lock = new Lock("Buffer lock");
-       full = new Condition();
-       empty = new Condition();
+       full = new Condition("Write full");
+       empty = new Condition("Read empty");
        in = out = count = 0;
    }
    
@@ -487,38 +520,92 @@ void Condition::Broadcast(Lock* conditionLock)
    void BoundedBuffer::Read(void *data, int size)
    {
        int *readData = (int*)data;
-       lock->Acquire();
        for (int i = 0; i < size; ++i)
        {
+       	lock->Acquire();
            while (count == 0)
                empty->Wait(lock);
            readData[i] = buffer[out];
            out = (out + 1) % maxsize;
            --count;
-           full->Signal(lock);
+           full->Broadcast(lock);
+       	lock->Release();
        }
-       lock->Release();
    }
    
    void BoundedBuffer::Write(void *data, int size)
    {
        int *writeData = (int*)data;
-       lock->Acquire();
        for (int i = 0; i < size; ++i)
        {
+       	lock->Acquire();
            while (count == maxsize)
                full->Wait(lock);
            buffer[in] = writeData[i];
            in = (in + 1) % maxsize;
            ++count;
            empty->Signal(lock);
+       	lock->Release();
        }
-       lock->Release();
+   }
+   // 输出buffer，以便测试
+   void BoundedBuffer::printBuffer()
+   {
+       int i = out, cnt = count;
+       printf("\t\tthe buffer is: ");
+       if(cnt == 0)
+           printf("null");
+       else
+           while (cnt--)
+           {
+               printf("%d ", buffer[i]);
+               i = (i + 1) % maxsize;
+           }
+   	printf("\n");
    }
    
    ```
-
    
+3. 对有界缓冲区测试
+
+   在`threadtest.cc`中添加`bufferTest(int which)`函数
+
+   ```cpp
+   // BoundedBuffer test
+   void bufferTest(int which)
+   {
+       // odd profucer, even consumer
+       if (which % 2) 
+       {
+   		printf("***producer[thread %d]", which);
+           printf("\n\tBefore write:\n");
+   		buffer->printBuffer();
+   		//int size = Random() % 10;
+           int size = 2;
+   		buffer->Write(data, size);
+           printf("\tAfter write:\n");
+           buffer->printBuffer();
+       }
+       else
+       {
+           printf("***consumer[thread %d]", which);
+           printf("\n\tBefore read:\n");
+           buffer->printBuffer();
+   		//int size = Random() % 10;
+           int size = which;
+   		int *read = new int(size);
+           buffer->Read(read, size);
+           printf("\tread: ");
+           for(int i = 0; i < size; ++i)
+               printf("%d ", read[i]);
+           printf("\n\tAfter read:\n");
+           buffer->printBuffer();
+           printf("***consumer[thread %d] finished reading\n", which);
+       }
+   }   
+   ```
+
+   ![](pic/bufferTest.png)
 
 # 3.遇到问题与解决
 

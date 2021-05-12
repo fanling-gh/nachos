@@ -14,6 +14,7 @@
 #include "dllist.h"
 #include "synch.h"
 #include "Table.h"
+#include "BoundedBuffer.h"
 // testnum is set in main.cc
 int testnum = 1;
 // threadNum is set in main.cc
@@ -31,6 +32,9 @@ Lock *dllistLock = new Lock("lock for dllist operations");
 Condition *cIsEmpty = new Condition("condition: is dllist empty?");
 // 通过gdb debug得出：table应设为全局变量，否则会使currentThread丢失，原因尚未得知
 Table *table = new Table(threadNum * itemNum);
+BoundedBuffer *buffer = new BoundedBuffer(15);
+int data[] = {1,3,4,13,12,17,18,23,19,20,13,33,27,43,26,21,16,14,10,29};
+
 //----------------------------------------------------------------------
 // SimpleThread
 // 	Loop 5 times, yielding the CPU to another ready thread
@@ -110,7 +114,7 @@ void tableTest(int which)
     //srand(static_cast<unsigned>(time(0)));
     for (int i = 0; i < threadNum; ++i)
     {
-        void *object = (void *)(Random() % max_key);
+        void *object = new int((Random() % max_key));
         indexs[i] = table->Alloc(object);
         printf("*** Object:%d stored at index[%d] in thread %d\n", *(int*)(object), indexs[i], which);
         currentThread->Yield();
@@ -129,6 +133,39 @@ void tableTest(int which)
         currentThread->Yield();
     }
 }
+
+// BoundedBuffer test
+void bufferTest(int which)
+{
+    // odd profucer, even consumer
+    if (which % 2) 
+    {
+		printf("***producer[thread %d]", which);
+        printf("\n\tBefore write:\n");
+		buffer->printBuffer();
+		//int size = Random() % 10;
+        int size = 2;
+		buffer->Write(data, size);
+        printf("\tAfter write:\n");
+        buffer->printBuffer();
+    }
+    else
+    {
+        printf("***consumer[thread %d]", which);
+        printf("\n\tBefore read:\n");
+        buffer->printBuffer();
+		//int size = Random() % 10;
+        int size = which;
+		int *read = new int(size);
+        buffer->Read(read, size);
+        printf("\tread: ");
+        for(int i = 0; i < size; ++i)
+            printf("%d ", read[i]);
+        printf("\n\tAfter read:\n");
+        buffer->printBuffer();
+        printf("***consumer[thread %d] finished reading\n", which);
+    }
+}   
 
 //----------------------------------------------------------------------
 // ThreadTest1
@@ -161,23 +198,26 @@ void ThreadTest()
 {
     switch (testnum)
     {
-    case 1:
+    case 1: // default test
         Test(SimpleThread);
         break;
-    case 2:
+    case 2: // test dllist-driver.cc
         Test(Driver_test);
         break;
-    case 3:
+    case 3: // test exp1-1
         Test(Test1);
         break;
-    case 4:
+    case 4: // test exp1-2
         Test(Test2);
         break;
-    case 5:
+    case 5: // test exp1-3
         Test(Test3);
         break;
-    case 6:
+    case 6: // test Table
         Test(tableTest);
+        break;
+    case 7: // test BoundedBuffer
+        Test(bufferTest);
         break;
     default:
         printf("No test specified.\n");
