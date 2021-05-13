@@ -1,5 +1,3 @@
-[toc]
-
 实验二 线程与同步
 ===
 
@@ -11,10 +9,7 @@
 | 22920182204231 | 林枫 | 计算机 | 2.1.1 && 2.1.3.1 |
 | 22920182204356 | 张加辉 | 计算机 | 2.1.2 && 2.1.3.2 |
 
-
-
 # 1.实验内容简述
-
 本次实验的目的在于将nachos中的锁机制和条件变量的实现补充完整，并利用这些同步机制实现几个基础工具类。实验内容分三部分：实现锁机制和条件变量，并利用这些同步机制将实验一中所实现双向有序链表类修改成线程安全的；实现一个线程安全的表结构；实现一个大小受限的缓冲区.
 # 2.实验步骤与代码
 
@@ -35,9 +30,9 @@ class Lock {
 
   private:
     char* name;				
-    bool status;  
-    List* queue; 
-    Thread* holdingThread;
+    bool status;  //资源当前是否空闲 
+    List* queue;  //堵塞的线程队列
+    Thread* holdingThread; //当前占有该资源的线程
 };
 ```
 在`Lock`类的定义中，我们增加了，`status`（表示该资源是否未被占有），`queue`（被堵塞的线程的队列），`holdingThread`（当前占有该资源的线程）。
@@ -47,32 +42,36 @@ class Lock {
 ```C++
 void Lock::Acquire()
 {
+    /*获取资源*/
     IntStatus oldLevel = interrupt->SetLevel(IntOff);   // disable interrupts
-    while(status == false)
+    while(status == false)//当前资源已被占有
     {
-         queue->Append((void *)currentThread); 
-         currentThread->Sleep();
+         queue->Append((void *)currentThread); //将该线程加入堵塞队列
+         currentThread->Sleep();  //将当前线程挂起
     }
-    status = false;
-    holdingThread = currentThread;
+    //若资源空闲
+    status = false; //占有资源
+    holdingThread = currentThread; 
     (void) interrupt->SetLevel(oldLevel);   // re-enable interrupts
 }
 
 void Lock::Release() 
 {
+    /*释放资源*/
     Thread *thread;
-    IntStatus oldLevel = interrupt->SetLevel(IntOff);
+    IntStatus oldLevel = interrupt->SetLevel(IntOff); // disable interrupts
 
-    thread = (Thread *)queue->Remove();
-    if (thread != NULL)	{   // make thread ready
-	   scheduler->ReadyToRun(thread);
+    thread = (Thread *)queue->Remove();//将一个线程从等待队列中移除
+    if (thread != NULL)	{   
+	   scheduler->ReadyToRun(thread);//将一个线程置于就绪队列
     }
     status = true;
-    (void) interrupt->SetLevel(oldLevel);
+    (void) interrupt->SetLevel(oldLevel); // re-enable interrupts
 }
 
 bool Lock::isHeldByCurrentThread()
 {
+    /*判断当前线程是否是资源的占有者*/
     return (currentThread == holdingThread);
 }
 ```
@@ -83,22 +82,18 @@ bool Lock::isHeldByCurrentThread()
 ```C++
 class Condition {
   public:
-    Condition(char* debugName);		// initialize condition to 
-					// "no one waiting"
+    Condition(char* debugName);		// initialize condition to 					// "no one waiting"
     ~Condition();			// deallocate the condition
     char* getName() { return (name); }
-    
-    void Wait(Lock *conditionLock); 	// these are the 3 operations on 
-					// condition variables; releasing the 
-					// lock and going to sleep are 
-					// *atomic* in Wait()
-    void Signal(Lock *conditionLock);   // conditionLock must be held by
-    void Broadcast(Lock *conditionLock);// the currentThread for all of 
-					// these operations
-
+   
+   //下面三个操作需满足当前线程是占有该资源的线程
+    void Wait(Lock *conditionLock); 					/
+    void Signal(Lock *conditionLock);   
+    void Broadcast(Lock *conditionLock);
+					
   private:
     char* name;
-    List* queue;
+    List* queue;//等待队列
     // plus some other stuff you'll need to define
 };
 
@@ -112,23 +107,24 @@ void Condition::Wait(Lock* conditionLock)
 { 
     assert(conditionLock->isHeldByCurrentThread());
     // still need off the interupt
-    queue->Append((void *)currentThread);
+    queue->Append((void *)currentThread);//加入等待队列
     IntStatus oldLevel = interrupt->SetLevel(IntOff);
-    conditionLock->Release();
-    currentThread->Sleep();
+    conditionLock->Release(); //解锁，使其余线程可继续执行
+    currentThread->Sleep();  //挂起该线程
     (void) interrupt->SetLevel(oldLevel);
-    conditionLock->Acquire();// restart to require lock 
+    conditionLock->Acquire();// 被唤醒后，重新获得锁
 }
 void Condition::Signal(Lock* conditionLock)
 {
     Thread *thread;
     assert(conditionLock->isHeldByCurrentThread());
         thread = (Thread *)queue->Remove();
-        if (thread != NULL) {   // make thread ready
-            scheduler->ReadyToRun(thread);}
+        if (thread != NULL) {   //若等待队列非空，将线程从等待队列中移除
+            scheduler->ReadyToRun(thread);}//唤醒该线程
 }
 void Condition::Broadcast(Lock* conditionLock) 
 {
+    /*广播，将等待队列中的每个线程唤醒*/
     Thread *thread;
     assert(conditionLock->isHeldByCurrentThread());
     // wake up all the thread
@@ -142,7 +138,7 @@ void Condition::Broadcast(Lock* conditionLock)
 ```
 由于采用`Mesa`语义，所以`Signal()`，`Broadcast()`函数在唤醒被阻塞队列中的线程后继续执行。
 ### 2.1.2用`Semaphore`实现锁机制和条件变量
-用`Semaphore`实现加锁机制
+#### 用`Semaphore`实现加锁机制
 
 用信号量实现锁的关键在于将信号量的初值设置为1，这样才能保证同一时间能够占用被锁住的资源的线程只有一个。  
 以下展示主要修改的/增加的部分代码。
@@ -197,7 +193,7 @@ void Condition::Broadcast(Lock* conditionLock)
    }
    ```
 
-用`Semaphore`实现条件变量
+#### 用`Semaphore`实现条件变量
 
 实现条件变量需要配合使用锁，锁的作用为实现互斥，条件变量的所有操作(`Wait`, `Signal`, `Broadcast`)都需要一个锁，同一个条件变量使用同一个锁。
 
